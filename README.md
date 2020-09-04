@@ -1,4 +1,4 @@
-# Mail atatchment collector
+# Mail attachment collector
 
 Backup mail attachments from online email account.
 
