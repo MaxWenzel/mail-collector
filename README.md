@@ -1,4 +1,6 @@
+# Mail atatchment collector
 
+Backup mail attachments from online email account.
 
 ## FAQ
 
