@@ -1,40 +1,33 @@
 package org.devzone.mailcollector.service;
 
 import org.devzone.mailcollector.config.MailConfiguration;
+import org.devzone.mailcollector.model.MimeType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import javax.mail.*;
 import javax.mail.internet.MimeBodyPart;
-import javax.mail.search.FlagTerm;
 import java.io.IOException;
 import java.nio.file.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
 @Service
-/**
- * ---
- * Gmail:
- * INBOX
- * Notes
- * [Gmail]/Alle Nachrichten
- * [Gmail]/Entwürfe
- * [Gmail]/Gesendet
- * [Gmail]/Markiert
- * [Gmail]/Papierkorb
- * [Gmail]/Spam
- * [Gmail]/Wichtig
- */
 public class EmailFetchService {
 
     private static final Logger logger = LoggerFactory.getLogger(EmailFetchService.class);
+
     public static final String DATE_FILE_PATTERN = "yyyy_MM_dd_";
 
+    private final Environment environment;
     private final MailConfiguration mailConfiguration;
 
-    public EmailFetchService(MailConfiguration mailConfiguration) {
+    public EmailFetchService(Environment environment, MailConfiguration mailConfiguration) {
+        this.environment = environment;
         this.mailConfiguration = mailConfiguration;
     }
 
@@ -55,7 +48,8 @@ public class EmailFetchService {
         Store store = session.getStore(mailConfiguration.getProtocol());
         store.connect(mailConfiguration.getHost(), mailConfiguration.getUser(), mailConfiguration.getPassword());
 
-        //getAllFolders(store);
+//        printAllFolders(store);
+//        if (true) return;
 
         Folder inbox = store.getFolder(mailConfiguration.getMailFolderName());
         inbox.open(Folder.READ_ONLY);
@@ -68,7 +62,7 @@ public class EmailFetchService {
             if (message.isMimeType("text/plain")) {
                 continue;
             }
-            saveAllAttachments(backupDir, message, "image/jpeg", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            saveAllAttachments(backupDir, message, MimeType.getAllMimeTypes().toArray(new String[]{}));
         }
     }
 
@@ -92,7 +86,7 @@ public class EmailFetchService {
     private Path createBackupDirectoryPath(String folderName, String parent) {
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat(DATE_FILE_PATTERN);
         String date = simpleDateFormat.format(new Date());
-
+        folderName = environment.getActiveProfiles()[0].toUpperCase(Locale.GERMAN) + "_" + folderName;
         Path path = Paths.get(parent, date + folderName);
         return path;
     }
@@ -122,14 +116,28 @@ public class EmailFetchService {
                     Date sentDay = message.getSentDate() != null ? message.getSentDate() : new Date();
                     String date = simpleDateFormat.format(sentDay);
                     Path file = null;
+                    boolean isValidFileName = false;
                     while (true) {
-                        String fileName = normalizePath(part.getFileName());
-                        file = Paths.get(backupDir.toString(), date + String.format("%03d", counter++) + "_" + fileName);
-                        if (!Files.exists(file)) {
+                        if (!StringUtils.isEmpty(part.getFileName())) {
+                            String fileName = normalizePath(part.getFileName());
+                            try {
+                                file = Paths.get(backupDir.toString(), date + String.format("%03d", counter++) + "_" + fileName);
+                            } catch (Exception e) {
+                                logger.error("Cannot create filename with suffix {}", fileName);
+                                break;
+                            }
+                            if (!Files.exists(file)) {
+                                isValidFileName = true;
+                                break;
+                            }
+                        } else {
+                            logger.error("Detected invalid filename <{}> with Sentdate {}", part.getFileName(), message.getSentDate());
                             break;
                         }
                     }
-                    mimePart.saveFile(file.toString());
+                    if (isValidFileName) {
+                        mimePart.saveFile(file.toString());
+                    }
                 }
             }
         }
@@ -144,7 +152,7 @@ public class EmailFetchService {
         return false;
     }
 
-    private List<Folder> getAllFolders(Store store) throws MessagingException {
+    private List<Folder> printAllFolders(Store store) throws MessagingException {
         javax.mail.Folder[] folders = store.getDefaultFolder().list("*");
         List<Folder> result = new ArrayList<>();
         for (javax.mail.Folder folder : folders) {

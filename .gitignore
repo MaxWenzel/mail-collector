@@ -36,3 +36,4 @@ out/
 ### Local Files specific to Developers System ###
 **/src/main/resources/application-gmail.yml
 **/src/main/resources/application-gmx.yml
+**/src/main/resources/application-outlook.yml
